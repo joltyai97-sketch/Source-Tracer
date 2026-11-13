@@ -46,6 +46,51 @@ Plus the reverse question: **"What has to happen for fault X to be raised?"**
 | Plots | `pyqtgraph` | Fast, Qt-native |
 | Code view | `QScintilla` (or QPlainTextEdit + highlighter) | Line highlighting, gutter markers |
 
+## Target-agnostic design, MC68332 first
+
+The tool must work with **any microcontroller, any protocol and any
+fault-code convention**. Nothing about a particular chip, bus or fault scheme
+is hard-coded. Instead:
+
+- **Target profiles** (`source_tracer/profiles/*.yaml`) describe a chip:
+  - endianness and type sizes (`int` is 16-bit on some 68k compilers);
+  - compiler-specific keywords to ignore (`interrupt`, `@far`, `__near`, ...);
+  - the memory-mapped register map: name, address, width, module,
+    description, and a *role*:
+    - `tx` — a write sends data on a named channel;
+    - `rx` — a read takes from a scripted input queue;
+    - `status` — a read returns a default "ready" value so polling loops exit;
+    - `plain` — no special behaviour.
+- **Data sent is captured at two levels**, so no protocol knowledge is needed:
+  1. *register level*: every write to a `tx` register or transmit RAM is a
+     captured byte or word on that channel. This works for raw-register code,
+     typical of the 68332.
+  2. *function level*: any function can be marked "transmit" with the
+     argument that holds the buffer and length (library-style code).
+
+  Captured bytes are then grouped into frames by configurable rules (gap in
+  time, start/end byte, length field, fixed size) and decoded by where each
+  byte came from in the code. An optional `.dbc` or user-defined layout can
+  add named fields.
+- **Fault codes**: found by name heuristics plus usage analysis (constants
+  stored into a variable, passed to a function, or OR-ed into a flag word),
+  and always user-confirmable or markable. No single fault convention is
+  assumed.
+
+**First profile: MC68332 (MC68332ACFC20).** CPU32 core, big-endian,
+modules at `0xFFF000`:
+- SIM: ports E/F, PIT, watchdog, chip selects;
+- QSM: SCI UART with `SCDR`/`SCSR`, and QSPI with transmit and receive RAM;
+- TPU: 16 timer channels plus parameter RAM;
+- TPURAM.
+
+Code for this part is usually plain C with register access through macros or
+struct overlays. It may also contain K&R-style definitions, compiler keywords
+like `interrupt`, and some assembly. Assembly files are not interpreted; the
+functions they define become stubs. Off-chip peripherals (e.g. an external
+CAN controller on a chip select) can be added to a profile as extra register
+blocks.
+
 ## Architecture
 
 ```
@@ -198,11 +243,11 @@ Plus the reverse question: **"What has to happen for fault X to be raised?"**
 
 | # | Milestone | Done when |
 |---|---|---|
-| M0 | Setup | `pyproject.toml`, package layout, pytest, CI-ready, dark empty Qt window opens |
-| M1 | Load and browse | Open file or folder → preprocess → parse → Project tree lists functions, classes, globals; source view with syntax highlighting; warnings panel |
+| M0 ✅ | Setup | `pyproject.toml`, package layout, pytest, CI-ready, dark empty Qt window opens |
+| M1 ✅ | Load and browse | Open file or folder → parse (compiler keywords blanked by the profile) → Project tree lists functions, ISRs, classes/structs, globals, constants, hardware registers (matched to the profile) and likely fault codes; source view with syntax highlighting; details and warnings panels. Full preprocessing arrives in M2, when the code is run. *Also done early: name/usage-based fault-code detection with raise/clear/check sites* |
 | M2 | Interpreter core (C subset) | Expressions, control flow, functions, arrays, structs, pointers, fixed-width ints; per-feature tests |
 | M3 | **MVP**: call a function | Pick a function, enter args, set globals, run, see return value and watched outputs in the GUI |
-| M4 | C++ core + board profile | Classes and methods, pins, `delay`/`millis`, sketch and main run modes, auto-stubs |
+| M4 | C++ core + MC68332 hardware model | Classes and methods, pins, `delay`/`millis`, sketch and main run modes, auto-stubs |
 | M5 | **Faults and messages** | Fault auto-detection and confirmation, fault timeline, transmit capture (Serial/CAN/UART), hex plus variable-origin decoding |
 | M6 | Scenarios | Time-scripted inputs, scenario save and load, scenario matrix with Run all, CSV/Excel export, golden-result regression |
 | M7 | Fault index and DBC | Static "conditions to reach this fault" in plain English; `.dbc` import for CAN decoding |

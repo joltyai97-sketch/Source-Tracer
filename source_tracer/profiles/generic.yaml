@@ -1,0 +1,13 @@
+# Generic target profile: no register map, common compiler keywords ignored.
+# Use when no chip-specific profile exists yet; registers found in the code
+# are still listed, just without names/descriptions from a datasheet.
+name: Generic
+description: Any microcontroller (no register map)
+endianness: little
+address_bits: 32
+type_sizes: {char: 1, short: 2, int: 4, long: 4, long long: 8, float: 4, double: 8, pointer: 4}
+compiler_keywords: [interrupt, __interrupt, _interrupt, "@interrupt", __far, __near, "@far", "@near", __irq, __fiq, __ramfunc, __weak, __packed]
+isr_markers:
+  keywords: [interrupt, __interrupt, _interrupt, "@interrupt", __irq, __fiq]
+  name_patterns: ["(?i)_isr$", "(?i)^isr_", "(?i)_irq$", "(?i)_irqhandler$", "(?i)handler$"]
+registers: []

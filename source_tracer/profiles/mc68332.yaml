@@ -1,0 +1,118 @@
+# Target profile: Motorola/Freescale MC68332 (e.g. MC68332ACFC20).
+#
+# CPU32 core, big-endian. Internal modules mapped at 0xFFF000-0xFFFFFF
+# (SIMCR MM bit = 1, 24-bit addressing). Register addresses follow the
+# MC68332 User's Manual; verify against your board if MM = 0 (0x7FF000 base).
+#
+# Register roles:
+#   tx      - writing sends data on `channel` (captured as transmitted data)
+#   rx      - reading takes the next value from that channel's scripted input
+#   status  - reading returns `default` unless the scenario overrides it
+#   plain   - ordinary read/write storage
+
+name: MC68332
+description: Motorola MC68332 32-bit microcontroller (CPU32, SIM, QSM, TPU, 2 KB TPURAM)
+endianness: big
+address_bits: 24
+
+# Type sizes in bytes. Most 68k C compilers use a 32-bit int; some
+# (e.g. older Introl/Whitesmiths settings) use 16-bit. Change if needed.
+type_sizes:
+  char: 1
+  short: 2
+  int: 4
+  long: 4
+  long long: 8
+  float: 4
+  double: 8
+  pointer: 4
+
+# Compiler-specific keywords that are not standard C/C++. They are blanked
+# out (replaced by spaces) before parsing so line/column positions stay exact.
+compiler_keywords:
+  - interrupt
+  - __interrupt
+  - _interrupt
+  - "@interrupt"
+  - "@far"
+  - "@near"
+  - __far
+  - __near
+  - _Far
+  - _Near
+  - __reentrant
+
+# Names that mark a function as an interrupt service routine.
+isr_markers:
+  keywords: [interrupt, __interrupt, _interrupt, "@interrupt"]
+  name_patterns: ["(?i)_isr$", "(?i)^isr_", "(?i)_irq$", "(?i)handler$"]
+
+registers:
+  # ---- SIM: System Integration Module --------------------------------
+  - {name: SIMCR,   address: 0xFFFA00, size: 2, module: SIM, description: SIM module configuration}
+  - {name: SIMTR,   address: 0xFFFA02, size: 2, module: SIM, description: SIM test register}
+  - {name: SYNCR,   address: 0xFFFA04, size: 2, module: SIM, role: status, default: 0x7F08, description: Clock synthesizer control (SLOCK set)}
+  - {name: RSR,     address: 0xFFFA07, size: 1, module: SIM, role: status, default: 0x80, description: Reset status (external reset)}
+  - {name: PORTE0,  address: 0xFFFA11, size: 1, module: SIM, description: Port E data}
+  - {name: PORTE1,  address: 0xFFFA13, size: 1, module: SIM, description: Port E data (mirror)}
+  - {name: DDRE,    address: 0xFFFA15, size: 1, module: SIM, description: Port E data direction}
+  - {name: PEPAR,   address: 0xFFFA17, size: 1, module: SIM, description: Port E pin assignment}
+  - {name: PORTF0,  address: 0xFFFA19, size: 1, module: SIM, description: Port F data}
+  - {name: PORTF1,  address: 0xFFFA1B, size: 1, module: SIM, description: Port F data (mirror)}
+  - {name: DDRF,    address: 0xFFFA1D, size: 1, module: SIM, description: Port F data direction}
+  - {name: PFPAR,   address: 0xFFFA1F, size: 1, module: SIM, description: Port F pin assignment}
+  - {name: SYPCR,   address: 0xFFFA21, size: 1, module: SIM, description: System protection control (watchdog, bus monitor)}
+  - {name: PICR,    address: 0xFFFA22, size: 2, module: SIM, description: Periodic interrupt control}
+  - {name: PITR,    address: 0xFFFA24, size: 2, module: SIM, description: Periodic interrupt timer}
+  - {name: SWSR,    address: 0xFFFA27, size: 1, module: SIM, description: Software watchdog service (write 0x55 then 0xAA)}
+  - {name: CSPAR0,  address: 0xFFFA44, size: 2, module: SIM, description: Chip-select pin assignment 0}
+  - {name: CSPAR1,  address: 0xFFFA46, size: 2, module: SIM, description: Chip-select pin assignment 1}
+  - {name: CSBARBT, address: 0xFFFA48, size: 2, module: SIM, description: Chip-select base, boot}
+  - {name: CSORBT,  address: 0xFFFA4A, size: 2, module: SIM, description: Chip-select option, boot}
+  - {name: CSBAR0,  address: 0xFFFA4C, size: 2, module: SIM, description: Chip-select base 0}
+  - {name: CSOR0,   address: 0xFFFA4E, size: 2, module: SIM, description: Chip-select option 0}
+
+  # ---- QSM: Queued Serial Module (SCI UART + QSPI) -------------------
+  - {name: QSMCR,   address: 0xFFFC00, size: 2, module: QSM, description: QSM module configuration}
+  - {name: QILR,    address: 0xFFFC04, size: 1, module: QSM, description: QSM interrupt level}
+  - {name: QIVR,    address: 0xFFFC05, size: 1, module: QSM, description: QSM interrupt vector}
+  - {name: SCCR0,   address: 0xFFFC08, size: 2, module: QSM, description: SCI control 0 (baud rate)}
+  - {name: SCCR1,   address: 0xFFFC0A, size: 2, module: QSM, description: SCI control 1 (enable, interrupts)}
+  - {name: SCSR,    address: 0xFFFC0C, size: 2, module: QSM, role: status, default: 0x0180, description: "SCI status (TDRE=0x0100, TC=0x0080, RDRF=0x0040)"}
+  - {name: SCDR,    address: 0xFFFC0E, size: 2, module: QSM, role: tx, channel: SCI, rx_channel: SCI, description: SCI data (write = transmit, read = receive)}
+  - {name: PORTQS,  address: 0xFFFC15, size: 1, module: QSM, description: Port QS data}
+  - {name: PQSPAR,  address: 0xFFFC16, size: 1, module: QSM, description: Port QS pin assignment}
+  - {name: DDRQS,   address: 0xFFFC17, size: 1, module: QSM, description: Port QS data direction}
+  - {name: SPCR0,   address: 0xFFFC18, size: 2, module: QSM, description: QSPI control 0}
+  - {name: SPCR1,   address: 0xFFFC1A, size: 2, module: QSM, description: QSPI control 1 (SPE starts transfer)}
+  - {name: SPCR2,   address: 0xFFFC1C, size: 2, module: QSM, description: QSPI control 2 (queue pointers)}
+  - {name: SPCR3,   address: 0xFFFC1E, size: 1, module: QSM, description: QSPI control 3}
+  - {name: SPSR,    address: 0xFFFC1F, size: 1, module: QSM, role: status, default: 0x80, description: "QSPI status (SPIF=0x80)"}
+  - {name: QSPI_RR, address: 0xFFFD00, size: 2, count: 16, module: QSM, role: rx, channel: QSPI, description: QSPI receive RAM}
+  - {name: QSPI_TR, address: 0xFFFD20, size: 2, count: 16, module: QSM, role: tx, channel: QSPI, description: QSPI transmit RAM}
+  - {name: QSPI_CR, address: 0xFFFD40, size: 1, count: 16, module: QSM, description: QSPI command RAM}
+
+  # ---- TPU: Time Processor Unit -------------------------------------
+  - {name: TPUMCR,  address: 0xFFFE00, size: 2, module: TPU, description: TPU module configuration}
+  - {name: TCR,     address: 0xFFFE02, size: 2, module: TPU, description: TPU test configuration}
+  - {name: DSCR,    address: 0xFFFE04, size: 2, module: TPU, description: Development support control}
+  - {name: DSSR,    address: 0xFFFE06, size: 2, module: TPU, description: Development support status}
+  - {name: TICR,    address: 0xFFFE08, size: 2, module: TPU, description: TPU interrupt configuration}
+  - {name: CIER,    address: 0xFFFE0A, size: 2, module: TPU, description: Channel interrupt enable}
+  - {name: CFSR0,   address: 0xFFFE0C, size: 2, module: TPU, description: Channel function select 0 (ch 12-15)}
+  - {name: CFSR1,   address: 0xFFFE0E, size: 2, module: TPU, description: Channel function select 1 (ch 8-11)}
+  - {name: CFSR2,   address: 0xFFFE10, size: 2, module: TPU, description: Channel function select 2 (ch 4-7)}
+  - {name: CFSR3,   address: 0xFFFE12, size: 2, module: TPU, description: Channel function select 3 (ch 0-3)}
+  - {name: HSQR0,   address: 0xFFFE14, size: 2, module: TPU, description: Host sequence 0}
+  - {name: HSQR1,   address: 0xFFFE16, size: 2, module: TPU, description: Host sequence 1}
+  - {name: HSRR0,   address: 0xFFFE18, size: 2, module: TPU, description: Host service request 0}
+  - {name: HSRR1,   address: 0xFFFE1A, size: 2, module: TPU, description: Host service request 1}
+  - {name: CPR0,    address: 0xFFFE1C, size: 2, module: TPU, description: Channel priority 0}
+  - {name: CPR1,    address: 0xFFFE1E, size: 2, module: TPU, description: Channel priority 1}
+  - {name: CISR,    address: 0xFFFE20, size: 2, module: TPU, description: Channel interrupt status}
+  - {name: TPU_PRAM, address: 0xFFFF00, size: 2, count: 128, module: TPU, description: TPU channel parameter RAM (16 ch x 8 words)}
+
+  # ---- TPURAM: 2 KB standby RAM -------------------------------------
+  - {name: TRAMMCR, address: 0xFFFB00, size: 2, module: TPURAM, description: TPURAM module configuration}
+  - {name: TRAMTST, address: 0xFFFB02, size: 2, module: TPURAM, description: TPURAM test}
+  - {name: TRAMBAR, address: 0xFFFB04, size: 2, module: TPURAM, description: TPURAM base address}

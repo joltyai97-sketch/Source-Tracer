@@ -10,6 +10,14 @@ chosen variables as outputs.
 **Primary users:** non-software engineers who need to *follow* and *predict*
 the behaviour of existing, working firmware.
 
+**Main use case:** answer two questions for a given scenario (a set of
+inputs, possibly changing over time):
+1. **Which fault codes are raised (and cleared), and when?**
+2. **What data does the device send** (CAN frames, UART/Serial bytes, I2C/SPI
+   writes, Modbus replies, ...) and what do those bytes mean?
+
+Plus the reverse question: **"What has to happen for fault X to be raised?"**
+
 **Goals**
 - Load real-world firmware (C and a practical subset of C++) without editing it.
 - Explain what the code does: step line by line, show which lines ran and why
@@ -99,7 +107,45 @@ the behaviour of existing, working firmware.
    - *Main*: `main()` with a loop-iteration or time guard.
    - *Sweep*: repeat a run while varying one input across a range, recording
      the chosen outputs. Results go to a table and a plot ("predict outputs").
-5. **Trace and explanation**
+5. **Fault and message analysis** (`analysis/`, the core of the product)
+   - **Fault model.** Fault codes are found automatically by heuristics, then
+     the user confirms them. Candidates:
+     - enums or `#define`s whose names contain `FAULT`, `ERR`, `DTC`, `ALARM`;
+     - fault flag variables or bitfields, e.g. `faultFlags |= OVERTEMP_BIT`;
+     - fault-reporting functions such as `setFault(code)` / `reportDTC(id)`.
+
+     The user can also mark any variable, bit or function as a fault source.
+     During a run, every set and clear is recorded with virtual time, source
+     line and the call stack that caused it.
+   - **Message capture.** Every transmit function becomes a capture point:
+     - Arduino: `Serial.write/print`, `Wire.write`, `SPI.transfer`;
+     - CAN libraries: `CAN.sendMsgBuf`, `mcp2515.sendMessage`;
+     - HAL: `HAL_UART_Transmit`, `HAL_CAN_AddTxMessage`, `HAL_FDCAN_AddMessageToTxFifoQ`;
+     - functions the user marks.
+
+     Each capture records time, bus, ID/address and payload bytes, shown in
+     both hex and decoded form.
+   - **Decoding.** For CAN, import a `.dbc` file with `cantools` so the
+     payload shows as named signals with units. Without a DBC, decode using
+     the struct or array layout the code packed the bytes from: the
+     interpreter knows which variable went into which byte, e.g.
+     "byte 2 = batteryTemp (31)".
+   - **Scenario matrix.** A table where each row is a scenario (inputs plus a
+     time script) and the columns are expected or observed faults and
+     messages. "Run all" fills it in. Export to CSV or Excel for reports.
+     Golden results can be saved, so a later firmware version can be checked
+     against them (regression).
+   - **Fault index (static).** For every place in the code that sets a fault,
+     list the chain of `if` / `switch` / loop conditions that must hold to
+     reach it, rewritten in plain English with the variables named, e.g.
+     "OVERTEMP is set when temp > 85 for longer than 500 ms
+     (overTempTimer > 50) and the sensor is valid". This answers "what
+     causes fault X?" without running anything.
+   - **Search for a cause (later).** Given a target fault, sweep or randomly
+     search the user-marked inputs within their ranges and report the input
+     combinations that trigger it. Symbolic execution is a possible later
+     upgrade.
+6. **Trace and explanation**
    - Every event is recorded with a step number, virtual time, source location
      and old → new value.
    - **Narration**: plain-English line descriptions generated from the AST,
@@ -124,9 +170,16 @@ the behaviour of existing, working firmware.
 │ Watch / Outputs                 │ Plot (watched vars vs time/iteration   │
 │ name │ value │ changed at line  │  or vs swept input)                    │
 ├─────────────────────────────────┴────────────────────────────────────────┤
-│ Narration │ Serial output │ Warnings (unsupported/skipped code)          │
+│ Faults timeline │ Sent messages │ Narration │ Warnings                    │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
+- **Faults timeline**: one lane per fault code showing when it was set and
+  cleared. Click an edge to jump to the line and see the conditions that were
+  true at that moment.
+- **Sent messages**: a bus-monitor style table (time, bus, ID, length, hex,
+  decoded signals). Filter by ID. Click a byte to see which variable produced it.
+- **Fault index** and **Scenario matrix** open as their own tabs in the
+  centre area.
 - A simple mode is on by default: hides types, hex and addresses. An advanced
   toggle shows them.
 - **Scenarios**: save and load inputs, watches and run mode as JSON so a
@@ -149,11 +202,13 @@ the behaviour of existing, working firmware.
 | M1 | Load and browse | Open file or folder → preprocess → parse → Project tree lists functions, classes, globals; source view with syntax highlighting; warnings panel |
 | M2 | Interpreter core (C subset) | Expressions, control flow, functions, arrays, structs, pointers, fixed-width ints; per-feature tests |
 | M3 | **MVP**: call a function | Pick a function, enter args, set globals, run, see return value and watched outputs in the GUI |
-| M4 | C++ core + Arduino profile | Classes and methods, `Serial`, pins, `delay`/`millis`, sketch run mode, auto-stubs |
-| M5 | Follow the code | Step / run-to / breakpoints, current-line highlight, narration, coverage tint, value history |
-| M6 | Predict outputs | Time-varying inputs, plots, sweep mode, scenario save and load |
-| M7 | More boards and C++ | STM32 HAL profile, inheritance/virtuals, templates, interrupts (ISRs triggered by pin changes or timers) |
-| M8 | Packaging | PyInstaller builds for Windows/macOS/Linux, example projects, user guide |
+| M4 | C++ core + board profile | Classes and methods, pins, `delay`/`millis`, sketch and main run modes, auto-stubs |
+| M5 | **Faults and messages** | Fault auto-detection and confirmation, fault timeline, transmit capture (Serial/CAN/UART), hex plus variable-origin decoding |
+| M6 | Scenarios | Time-scripted inputs, scenario save and load, scenario matrix with Run all, CSV/Excel export, golden-result regression |
+| M7 | Fault index and DBC | Static "conditions to reach this fault" in plain English; `.dbc` import for CAN decoding |
+| M8 | Follow the code | Step / run-to / breakpoints, narration, coverage tint, value history, plots, sweep mode |
+| M9 | More boards and C++ | Extra board profiles, inheritance/virtuals, templates, interrupts (ISRs triggered by pins or timers), search for a cause |
+| M10 | Packaging | PyInstaller builds for Windows/macOS/Linux, example projects, user guide |
 
 ## Project layout
 
@@ -162,7 +217,8 @@ source_tracer/
   __main__.py
   frontend/    preprocess.py  parser.py  lower.py  symbols.py  ast.py
   core/        values.py  interpreter.py  scope.py  events.py  trace.py  narrate.py
-  hw/          stubs.py  clock.py  pins.py  boards/{arduino.py, stm32_hal.py}
+  hw/          stubs.py  clock.py  pins.py  bus.py  boards/{arduino.py, stm32_hal.py}
+  analysis/    faults.py  messages.py  decode.py (dbc, origin)  fault_index.py  matrix.py  search.py
   headers/     fake Arduino.h, stdint.h, HAL headers ...
   gui/         main_window.py  theme.py  worker.py  panels/{project, source, inputs, watch, plot, console}.py
   scenario.py
@@ -189,4 +245,7 @@ tests/         unit tests per language feature + end-to-end runs of examples/
 | Macros hide logic from non-engineers | Show both original and expanded code on hover |
 | `while(1)` / busy-wait polling hangs | Iteration and time guards; hardware reads default to "ready" values |
 | GUI freezes during long runs | Interpreter on a worker thread with batched event delivery |
+| Faults that depend on time (debounce, "persists for 500 ms") are missed | Virtual clock plus time-scripted inputs; scenarios specify a duration, not just values |
+| Fault codes hidden behind lookup tables or function pointers | User can mark fault sources by hand; capture works at the set/report function, not only on variables |
+| Message bytes assembled by `memcpy` / unions / bit-shifts | Value-origin tracking through assignments, shifts and memcpy; fallback is raw hex plus DBC |
 | Slow interpretation | Accept it (accuracy and speed aren't goals); optimise hot paths only if real projects need it |

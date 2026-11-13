@@ -47,3 +47,41 @@ def test_filter_hides_non_matching(window):
     window.search.setText("SCDR")
     assert not _find(window.tree, "SCDR").isHidden()
     assert _find(window.tree, "FAULT_OVERTEMP").isHidden()
+
+
+def _set_var(panel, name, value):
+    t = panel.var_table
+    for r in range(t.rowCount()):
+        if t.item(r, 0).text() == name:
+            t.item(r, 3).setText(value)
+            return
+    raise AssertionError(f"{name} not in variables table")
+
+
+def test_run_function_from_gui(window, qtbot):
+    panel = window.run_panel
+    assert panel.select_function("sensors_check_faults")
+    _set_var(panel, "g_temp_c", "90")
+    _set_var(panel, "g_vbus_mv", "24000")
+    _set_var(panel, "s_overtemp_ticks", "50")
+    with qtbot.waitSignal(panel.run_finished, timeout=10000):
+        panel.run()
+    out = window.results.outcome
+    assert out.result.ok
+    assert out.faults.raised[:1] == ["FAULT_OVERTEMP"]
+    assert "FAULT_OVERTEMP" in window.results.summary.toPlainText()
+    assert window.results.faults.rowCount() >= 2
+    # executed lines are recorded for the source view
+    sensors = next(p for p in window.coverage if p.name == "sensors.c")
+    assert 55 in window.coverage[sensors]
+
+
+def test_run_with_arguments_and_transmit(window, qtbot):
+    panel = window.run_panel
+    assert panel.select_function("comms_send_status")
+    _set_var(panel, "g_active_fault", "FAULT_DRY_RUN")
+    with qtbot.waitSignal(panel.run_finished, timeout=10000):
+        panel.run()
+    r = window.results.outcome.result
+    assert [t.value for t in r.transmitted][:4] == [0x7E, 0x01, 0x06, 0x30]
+    assert window.results.sent_table.rowCount() == 10

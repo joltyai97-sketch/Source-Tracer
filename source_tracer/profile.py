@@ -42,6 +42,7 @@ class Profile:
     description: str = ""
     endianness: str = "little"
     address_bits: int = 32
+    max_align: int = 4  # largest alignment the compiler uses for struct fields
     type_sizes: dict[str, int] = field(default_factory=dict)
     compiler_keywords: list[str] = field(default_factory=list)
     isr_keywords: list[str] = field(default_factory=list)
@@ -100,6 +101,7 @@ def load_profile(path_or_name: str | Path) -> Profile:
         description=data.get("description", ""),
         endianness=data.get("endianness", "little"),
         address_bits=int(data.get("address_bits", 32)),
+        max_align=int(data.get("max_align", 4)),
         type_sizes=dict(data.get("type_sizes") or {}),
         compiler_keywords=list(data.get("compiler_keywords") or []),
         isr_keywords=list(isr.get("keywords") or []),

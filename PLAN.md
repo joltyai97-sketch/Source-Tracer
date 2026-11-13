@@ -245,10 +245,10 @@ blocks.
 |---|---|---|
 | M0 ✅ | Setup | `pyproject.toml`, package layout, pytest, CI-ready, dark empty Qt window opens |
 | M1 ✅ | Load and browse | Open file or folder → parse (compiler keywords blanked by the profile) → Project tree lists functions, ISRs, classes/structs, globals, constants, hardware registers (matched to the profile) and likely fault codes; source view with syntax highlighting; details and warnings panels. Full preprocessing arrives in M2, when the code is run. *Also done early: name/usage-based fault-code detection with raise/clear/check sites* |
-| M2 | Interpreter core (C subset) | Expressions, control flow, functions, arrays, structs, pointers, fixed-width ints; per-feature tests |
-| M3 | **MVP**: call a function | Pick a function, enter args, set globals, run, see return value and watched outputs in the GUI |
-| M4 | C++ core + MC68332 hardware model | Classes and methods, pins, `delay`/`millis`, sketch and main run modes, auto-stubs |
-| M5 | **Faults and messages** | Fault auto-detection and confirmation, fault timeline, transmit capture (Serial/CAN/UART), hex plus variable-origin decoding |
+| M2 ✅ | Interpreter core (C subset) | Expressions, control flow, functions, arrays, structs, pointers, fixed-width ints; per-feature tests |
+| M3 ✅ | **MVP**: call a function | Pick a function, enter args, set globals, run, see return value and watched outputs in the GUI |
+| M4 🟡 | C++ core + MC68332 hardware model | Classes and methods, pins, `delay`/`millis`, sketch and main run modes, auto-stubs. *Done: classes, constructors, inheritance and virtual methods, references, `new`; auto-stubs; register bus with tx/rx/status roles; struct layout with 68k alignment and bit-fields. Still to do: virtual clock, interrupts and timers, run modes over time* |
+| M5 🟡 | **Faults and messages** | Fault auto-detection and confirmation, fault timeline, transmit capture (Serial/CAN/UART), hex plus variable-origin decoding. *Done: runtime fault raise/clear events, active faults at end, register-level transmit capture with hex dump. Still to do: confirming or editing fault candidates, a timeline view, splitting data into frames, variable-origin decoding* |
 | M6 | Scenarios | Time-scripted inputs, scenario save and load, scenario matrix with Run all, CSV/Excel export, golden-result regression |
 | M7 | Fault index and DBC | Static "conditions to reach this fault" in plain English; `.dbc` import for CAN decoding |
 | M8 | Follow the code | Step / run-to / breakpoints, narration, coverage tint, value history, plots, sweep mode |

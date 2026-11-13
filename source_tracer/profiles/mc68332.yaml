@@ -13,6 +13,8 @@
 name: MC68332
 description: Motorola MC68332 32-bit microcontroller (CPU32, SIM, QSM, TPU, 2 KB TPURAM)
 endianness: big
+# 68k compilers align 16/32-bit fields to 2-byte boundaries.
+max_align: 2
 address_bits: 24
 
 # Type sizes in bytes. Most 68k C compilers use a 32-bit int; some

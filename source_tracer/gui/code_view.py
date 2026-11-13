@@ -9,7 +9,7 @@ from PySide6.QtGui import QColor, QFont, QFontDatabase, QPainter, QTextCursor, Q
 from PySide6.QtWidgets import QPlainTextEdit, QTextEdit, QWidget
 
 from source_tracer.gui.highlighter import CHighlighter
-from source_tracer.gui.theme import BG, CURRENT_LINE, TEXT, TEXT_DIM
+from source_tracer.gui.theme import BG, COVERED_LINE, CURRENT_LINE, OK, TEXT, TEXT_DIM
 
 
 class _LineNumberArea(QWidget):
@@ -38,6 +38,8 @@ class CodeView(QPlainTextEdit):
         self.highlighter = CHighlighter(self.document(), registers, faults)
         self._numbers = _LineNumberArea(self)
         self._marked_line: int | None = None
+        self._coverage: dict[int, int] = {}
+        self._coverage_sels: list = []
         self.blockCountChanged.connect(self._update_margin)
         self.updateRequest.connect(self._update_numbers)
         self._update_margin()
@@ -72,8 +74,42 @@ class CodeView(QPlainTextEdit):
                 n = block.blockNumber() + 1
                 painter.setPen(QColor(TEXT if n == self._marked_line else TEXT_DIM))
                 painter.drawText(0, top, self._numbers.width() - 8, height, Qt.AlignRight, str(n))
+                if n in self._coverage:
+                    painter.fillRect(self._numbers.width() - 4, top, 3, height, QColor(OK))
             block = block.next()
             top += round(self.blockBoundingRect(block).height()) if block.isValid() else height
+
+    # -- coverage (lines executed in the last run)
+    def set_coverage(self, lines: dict[int, int]) -> None:
+        self._coverage = dict(lines)
+        sels = []
+        for line in sorted(lines):
+            block = self.document().findBlockByNumber(line - 1)
+            if not block.isValid():
+                continue
+            sel = QTextEdit.ExtraSelection()
+            sel.format.setBackground(QColor(COVERED_LINE))
+            sel.format.setProperty(QTextFormat.FullWidthSelection, True)
+            sel.cursor = QTextCursor(block)
+            sels.append(sel)
+        self._coverage_sels = sels
+        self._apply_selections()
+        self._numbers.update()
+
+    def _apply_selections(self, current: QTextEdit.ExtraSelection | None = None) -> None:
+        sels = list(self._coverage_sels)
+        if current is not None:
+            sels.append(current)
+        elif self._marked_line is not None:
+            sels.append(self._current_sel(self._marked_line))
+        self.setExtraSelections(sels)
+
+    def _current_sel(self, line: int) -> QTextEdit.ExtraSelection:
+        sel = QTextEdit.ExtraSelection()
+        sel.format.setBackground(QColor(CURRENT_LINE))
+        sel.format.setProperty(QTextFormat.FullWidthSelection, True)
+        sel.cursor = QTextCursor(self.document().findBlockByNumber(max(0, line - 1)))
+        return sel
 
     # -- navigation
     def goto_line(self, line: int) -> None:
@@ -83,10 +119,5 @@ class CodeView(QPlainTextEdit):
         self.setTextCursor(cursor)
         self.centerCursor()
         self._marked_line = line
-        sel = QTextEdit.ExtraSelection()
-        sel.format.setBackground(QColor(CURRENT_LINE))
-        sel.format.setProperty(QTextFormat.FullWidthSelection, True)
-        sel.cursor = cursor
-        sel.cursor.clearSelection()
-        self.setExtraSelections([sel])
+        self._apply_selections(self._current_sel(line))
         self._numbers.update()

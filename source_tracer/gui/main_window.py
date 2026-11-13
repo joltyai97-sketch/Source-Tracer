@@ -37,6 +37,8 @@ from source_tracer.frontend import symbols as K
 from source_tracer.frontend.symbols import Symbol
 from source_tracer.gui import describe
 from source_tracer.gui.code_view import CodeView
+from source_tracer.gui.results_view import ResultsView
+from source_tracer.gui.run_panel import RunOutcome, RunPanel
 from source_tracer.gui.theme import ERROR, OK, TEXT_DIM, WARN
 from source_tracer.profile import available_profiles, load_profile
 from source_tracer.project import Project, load_project
@@ -146,7 +148,15 @@ class MainWindow(QMainWindow):
         self.details.setOpenLinks(False)
         self.details.anchorClicked.connect(self._anchor_clicked)
         self.details.setHtml(self._hint_html("Select anything in the Project list to see what it is and where it is used."))
-        self._dock("Details", self.details, Qt.RightDockWidgetArea, 420)
+        self.details_dock = self._dock("Details", self.details, Qt.RightDockWidgetArea, 440)
+
+        # Right (tabbed with Details): run panel
+        self.run_panel = RunPanel()
+        self.run_panel.run_finished.connect(self._run_finished)
+        self.run_dock = self._dock("Run", self.run_panel, Qt.RightDockWidgetArea, 440)
+        self.tabifyDockWidget(self.details_dock, self.run_dock)
+        self.details_dock.raise_()
+        self.coverage: dict[Path, dict[int, int]] = {}
 
         # Bottom: faults / fault sites / warnings
         self.fault_table = _table(["Fault code", "Value", "Kind", "Confidence", "Raised at", "Cleared at", "Why it was picked"])
@@ -158,6 +168,12 @@ class MainWindow(QMainWindow):
         self.bottom_tabs.addTab(self.fault_table, "Fault codes")
         self.bottom_tabs.addTab(self.usage_table, "Where faults are set / cleared")
         self.bottom_tabs.addTab(self.warning_table, "Warnings")
+        self.results = ResultsView(self.show_location)
+        self.result_tab_index = self.bottom_tabs.addTab(self.results.summary, "Run summary")
+        self.bottom_tabs.addTab(self.results.faults, "Faults in run")
+        self.bottom_tabs.addTab(self.results.sent, "Sent data")
+        self.bottom_tabs.addTab(self.results.vars, "Variables (run)")
+        self.bottom_tabs.addTab(self.results.log, "Event log")
         self._dock("Analysis", self.bottom_tabs, Qt.BottomDockWidgetArea, 260)
 
         self.statusBar().showMessage("Open a firmware folder or files to begin.")
@@ -235,11 +251,13 @@ class MainWindow(QMainWindow):
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
             self.project = load_project(self.paths, self.profile_combo.currentData())
+            self.tabs.clear()
+            self.coverage = {}
+            self._fill_tree()
+            self._fill_tables()
+            self.run_panel.set_project(self.project)
         finally:
             QApplication.restoreOverrideCursor()
-        self.tabs.clear()
-        self._fill_tree()
-        self._fill_tables()
         self.center.setCurrentWidget(self.tabs)
         names = ", ".join(p.name for p in self.paths[:3]) + ("…" if len(self.paths) > 3 else "")
         self.setWindowTitle(f"Source Tracer — {names}")
@@ -501,6 +519,8 @@ class MainWindow(QMainWindow):
         regs = {s.name for s in self.project.symbols.of_kind(K.REGISTER, K.REGISTER_BLOCK)} if self.project else set()
         faults = {c.name for c in self.project.faults.codes} if self.project else set()
         view = CodeView(path, text, regs, faults)
+        if path in self.coverage:
+            view.set_coverage(self.coverage[path])
         idx = self.tabs.addTab(view, path.name)
         self.tabs.setTabToolTip(idx, str(path))
         self.tabs.setCurrentIndex(idx)
@@ -511,6 +531,38 @@ class MainWindow(QMainWindow):
         if s.startswith("goto:"):
             file, _, line = s[5:].rpartition("|")
             self.show_location(Path(file), int(line))
+        elif s.startswith("run:"):
+            self.open_run_panel(s[4:])
+
+    def open_run_panel(self, function: str | None = None) -> None:
+        if function:
+            self.run_panel.select_function(function)
+        self.run_dock.show()
+        self.run_dock.raise_()
+
+    def _run_finished(self, outcome) -> None:
+        if not isinstance(outcome, RunOutcome):
+            self.results.show_error(str(outcome))
+            self.bottom_tabs.setCurrentIndex(self.result_tab_index)
+            return
+        r = outcome.result
+        self.results.show(outcome)
+        self.coverage = {}
+        for (f, line), n in r.coverage.items():
+            self.coverage.setdefault(Path(f).resolve(), {})[line] = n
+        for i in range(self.tabs.count()):
+            w = self.tabs.widget(i)
+            if isinstance(w, CodeView):
+                w.set_coverage(self.coverage.get(w.path, {}))
+        n_tx = len(r.transmitted)
+        self.bottom_tabs.setTabText(self.result_tab_index + 1, f"Faults in run ({len(outcome.faults.events)})")
+        self.bottom_tabs.setTabText(self.result_tab_index + 2, f"Sent data ({n_tx})")
+        self.bottom_tabs.setTabText(self.result_tab_index + 3, f"Variables (run) ({len(r.changed_globals)} changed)")
+        self.bottom_tabs.setTabText(self.result_tab_index + 4, f"Event log ({len(r.events)})")
+        self.bottom_tabs.setCurrentIndex(self.result_tab_index)
+        self.statusBar().showMessage(r.message)
+        if not r.ok and r.last_location:
+            self.show_location(Path(r.last_location[0]).resolve(), r.last_location[1])
 
     def _overview_html(self) -> str:
         p = self.project

@@ -4,6 +4,7 @@
 name: Generic
 description: Any microcontroller (no register map)
 endianness: little
+max_align: 4
 address_bits: 32
 type_sizes: {char: 1, short: 2, int: 4, long: 4, long long: 8, float: 4, double: 8, pointer: 4}
 compiler_keywords: [interrupt, __interrupt, _interrupt, "@interrupt", __far, __near, "@far", "@near", __irq, __fiq, __ramfunc, __weak, __packed]

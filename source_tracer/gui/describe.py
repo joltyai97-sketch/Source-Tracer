@@ -80,6 +80,8 @@ def describe_symbol(sym: Symbol, project: Project) -> str:
             rows.append(_row("Inputs", "none"))
         ret = sym.type.replace("static", "").replace("inline", "").strip()
         rows.append(_row("Returns", "nothing" if ret in ("void", "") else escape(ret)))
+        if k in (K.FUNCTION, K.ISR, K.METHOD):
+            body += f'<p><a href="run:{escape(sym.qualified_name)}">&#9654; Run this function…</a></p>'
         if k == K.ISR:
             body += "<p>Runs automatically when its hardware interrupt fires, not when called by other code.</p>"
         if k == K.PROTOTYPE:

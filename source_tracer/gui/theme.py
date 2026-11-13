@@ -15,6 +15,7 @@ TEXT_DIM = "#8b9099"
 ACCENT = "#4c9df3"
 SELECTION = "#2f4f75"
 CURRENT_LINE = "#2a3a4f"
+COVERED_LINE = "#1f3324"  # lines executed in the last run
 WARN = "#e5b567"
 ERROR = "#ef6b73"
 OK = "#7cc87c"

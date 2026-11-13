@@ -74,6 +74,8 @@ def _collect_issues(root: Node, lines: list[str]) -> list[ParseIssue]:
             issues.append(ParseIssue(row + 1, col, f"Expected '{node.type}' here"))
             continue
         if node.type == "ERROR":
+            if node.parent is not None and node.parent.type == "field_declaration" and node_text(node).lstrip().startswith(":"):
+                continue  # unnamed bit-field (`unsigned : 4;`), valid C the grammar lacks
             row, col = node.start_point
             snippet = lines[row].strip() if row < len(lines) else ""
             issues.append(

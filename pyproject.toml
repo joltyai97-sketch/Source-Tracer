@@ -25,7 +25,7 @@ source-tracer = "source_tracer.__main__:main"
 include = ["source_tracer*"]
 
 [tool.setuptools.package-data]
-source_tracer = ["profiles/*.yaml"]
+source_tracer = ["profiles/*.yaml", "headers/*.h"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
